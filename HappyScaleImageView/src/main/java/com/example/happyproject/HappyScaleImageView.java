@@ -4,16 +4,13 @@ package com.example.happyproject;
 import android.content.Context;
 import android.graphics.Matrix;
 import android.graphics.RectF;
-import android.os.SystemClock;
 import android.util.AttributeSet;
 import android.view.GestureDetector;
 import android.view.MotionEvent;
 import android.view.ScaleGestureDetector;
-import android.view.VelocityTracker;
 import android.view.View;
 import android.view.ViewConfiguration;
 import android.view.ViewTreeObserver;
-import android.widget.ImageView;
 
 public class HappyScaleImageView extends android.support.v7.widget.AppCompatImageView implements ViewTreeObserver.OnGlobalLayoutListener, View.OnTouchListener {
 
@@ -31,8 +28,6 @@ public class HappyScaleImageView extends android.support.v7.widget.AppCompatImag
     private static final int STATE_NORMAL = 1;  //常规的状态
     private int current_state = STATE_NORMAL;  //当前图片所处的状态
     private int mTouchSlop;
-    private float hasScaleX;
-    private float hasScaleY;
     private float maxScaleX;  //宽度最大放大倍数
     private float maxScaleY;  //长度最大放大倍数
     private float minScaleX;  //宽度最小缩放倍数
@@ -40,17 +35,14 @@ public class HappyScaleImageView extends android.support.v7.widget.AppCompatImag
     private RectF originBounds = new RectF();
     private RectF realBounds = new RectF();
 
-    float[] currentValues = new float[9];
+    private float[] currentValues = new float[9];
     private float move_end_x;
     private float move_end_y;
     private float move_start_x;
     private float move_start_y;
-    private boolean isScaleEnd = true;
-    private boolean preMotionIsScale;
-    private boolean isScaling;
     private int mLastPointerCount;
     private boolean isCanDrag = true;
-    float[] originValue = new float[9];
+    private float[] originValue = new float[9];
 
     public HappyScaleImageView(Context context) {
         this(context, null);
@@ -139,14 +131,12 @@ public class HappyScaleImageView extends android.support.v7.widget.AppCompatImag
 
             @Override
             public boolean onScaleBegin(ScaleGestureDetector detector) {
-                isScaling = true;
                 return true;
             }
 
             @Override
             public void onScaleEnd(ScaleGestureDetector detector) {
                 super.onScaleEnd(detector);
-                isScaling = false;
             }
         });
     }
