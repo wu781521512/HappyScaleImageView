@@ -3,6 +3,7 @@ package com.example.happyproject;
 
 import android.content.Context;
 import android.graphics.Matrix;
+import android.graphics.RectF;
 import android.os.SystemClock;
 import android.util.AttributeSet;
 import android.view.GestureDetector;
@@ -29,14 +30,15 @@ public class HappyScaleImageView extends android.support.v7.widget.AppCompatImag
     private static final int STATE_AMPLIFYING = 0; //放大的状态
     private static final int STATE_NORMAL = 1;  //常规的状态
     private int current_state = STATE_NORMAL;  //当前图片所处的状态
-    private final int mTouchSlop = ViewConfiguration.get(getContext()).getScaledTouchSlop();
+    private int mTouchSlop;
     private float hasScaleX;
     private float hasScaleY;
     private float maxScaleX;  //宽度最大放大倍数
     private float maxScaleY;  //长度最大放大倍数
     private float minScaleX;  //宽度最小缩放倍数
     private float minScaleY;  //长度最小缩放倍数
-
+    private RectF originBounds = new RectF();
+    private RectF realBounds = new RectF();
 
     float[] currentValues = new float[9];
     private float move_end_x;
@@ -46,6 +48,9 @@ public class HappyScaleImageView extends android.support.v7.widget.AppCompatImag
     private boolean isScaleEnd = true;
     private boolean preMotionIsScale;
     private boolean isScaling;
+    private int mLastPointerCount;
+    private boolean isCanDrag = true;
+    float[] originValue = new float[9];
 
     public HappyScaleImageView(Context context) {
         this(context, null);
@@ -57,18 +62,18 @@ public class HappyScaleImageView extends android.support.v7.widget.AppCompatImag
 
     public HappyScaleImageView(Context context, AttributeSet attrs, int defStyleAttr) {
         super(context, attrs, defStyleAttr);
-        init();
+        init(context);
     }
 
     /**
      * 初始化ImageView状态和设置手势监听
      */
-    private void init() {
+    private void init(Context context) {
         //默认设置ImageView的ScaleType为matrix
         setScaleType(ScaleType.MATRIX);
         scaleMatrix = new Matrix();
         originScaleMatrix = new Matrix();
-
+        mTouchSlop = ViewConfiguration.get(context).getScaledTouchSlop();
         handleDoubleTapEvent();
         handleScaleTapEvent();
 
@@ -87,6 +92,7 @@ public class HappyScaleImageView extends android.support.v7.widget.AppCompatImag
                 scaleMatrix.getValues(currentValues);
                 float currentX = detector.getCurrentSpanX() - detector.getPreviousSpanX();
                 float currentY = detector.getCurrentSpanY() - detector.getPreviousSpanY();
+
                 //想再放大
                 if (currentX >= 0) {
                     if (currentValues[0] * detector.getCurrentSpanX() / detector.getPreviousSpanX() > maxScaleX) {
@@ -120,7 +126,12 @@ public class HappyScaleImageView extends android.support.v7.widget.AppCompatImag
                     }
                 }
 
+
+
                 scaleMatrix.postScale(finalScaleX[0], finalScaleY[0], detector.getFocusX(), detector.getFocusY());
+
+                scaleMatrix.mapRect(realBounds,originBounds);
+                checkBoundsIsOutside();
                 current_state = STATE_AMPLIFYING;
                 setImageMatrix(scaleMatrix);
                 return true;
@@ -145,13 +156,7 @@ public class HappyScaleImageView extends android.support.v7.widget.AppCompatImag
      * 处理双击事件
      */
     private void handleDoubleTapEvent() {
-        gestureDetector = new GestureDetector(getContext(), new GestureDetector.SimpleOnGestureListener());
-        gestureDetector.setOnDoubleTapListener(new GestureDetector.OnDoubleTapListener() {
-            @Override
-            public boolean onSingleTapConfirmed(MotionEvent e) {
-                return false;
-            }
-
+        gestureDetector = new GestureDetector(getContext(), new GestureDetector.SimpleOnGestureListener() {
             @Override
             public boolean onDoubleTap(MotionEvent e) {
                 switch (current_state) {
@@ -166,16 +171,12 @@ public class HappyScaleImageView extends android.support.v7.widget.AppCompatImag
                     case STATE_AMPLIFYING:
                         //放大状态，双击后缩小到常规状态
                         setImageMatrix(originScaleMatrix);
+                        realBounds.set(originBounds);
                         originScaleMatrix.getValues(currentValues);
                         current_state = STATE_NORMAL;
                         break;
                 }
                 return true;
-            }
-
-            @Override
-            public boolean onDoubleTapEvent(MotionEvent e) {
-                return false;
             }
         });
     }
@@ -198,6 +199,7 @@ public class HappyScaleImageView extends android.support.v7.widget.AppCompatImag
         //在这里获取图片加载完后的宽高
 
         if (isOnce) {
+
             //第一次调用，获取控件大小(这个控件定位为match_parent情况下使用，也就是获取屏幕宽高)
             int originViewWidth = getWidth();
             int originViewHeight = getHeight();
@@ -206,6 +208,7 @@ public class HappyScaleImageView extends android.support.v7.widget.AppCompatImag
 
             int originBitmapWidth = getDrawable().getIntrinsicWidth();
             int originBitmapHeight = getDrawable().getIntrinsicHeight();
+            originBounds.set(0, 0, originBitmapWidth, originBitmapHeight);
 
             //设置最大缩放倍数
             maxScaleX = originViewWidth * 2f / originBitmapWidth;
@@ -222,11 +225,12 @@ public class HappyScaleImageView extends android.support.v7.widget.AppCompatImag
 
             scaleMatrix.preScale(scaleWidth, scaleHeight);
             scaleMatrix.postTranslate(0f, originViewHeight / 3f);
-
+            //获取matrix转换后的图片边界到realBounds中
             scaleMatrix.getValues(currentValues);
             float[] values = new float[9];
             scaleMatrix.getValues(values);
-
+            originScaleMatrix.getValues(originValue);
+            scaleMatrix.mapRect(realBounds, originBounds);
             originScaleMatrix.setValues(values);
             setImageMatrix(scaleMatrix);
             isOnce = false;
@@ -243,35 +247,76 @@ public class HappyScaleImageView extends android.support.v7.widget.AppCompatImag
             return true;
         scaleGestureDetector.onTouchEvent(event);
 
-
+        float averageX = 0;
+        float averageY = 0;
         int pointerCount = event.getPointerCount();
-
-        if (isScaling && SystemClock.uptimeMillis() - scaleGestureDetector.getEventTime() > 100)
-            return true;
-        else if (pointerCount == 1) {
-            switch (event.getAction()) {
-                case MotionEvent.ACTION_DOWN:
-                    move_start_x = event.getX();
-                    move_start_y = event.getY();
-                    return true;
-                case MotionEvent.ACTION_MOVE:
-                    move_end_x = event.getX();
-                    move_end_y = event.getY();
-                    if (Math.abs(move_end_x - move_start_x) > mTouchSlop || Math.abs(move_end_y - move_start_y) > mTouchSlop) {
-                        scaleMatrix.postTranslate(move_end_x - move_start_x, move_end_y - move_start_y);
-                        setImageMatrix(scaleMatrix);
-                        move_start_x = move_end_x;
-                        move_start_y = move_end_y;
-                    }
-                    return true;
-                case MotionEvent.ACTION_UP:
-                    move_start_x = 0f;
-                    move_start_y = 0f;
-                    return true;
-            }
+        for (int j = 0; j < pointerCount; j++) {
+            averageX += event.getX(j);
+            averageY += event.getY(j);
         }
 
+        averageX /= pointerCount;
+        averageY /= pointerCount;
+        if (mLastPointerCount != pointerCount) {
+            isCanDrag = false;
+            move_start_x = averageX;
+            move_start_y = averageY;
+        }
 
+        mLastPointerCount = pointerCount;
+        switch (event.getAction()) {
+            case MotionEvent.ACTION_DOWN:
+                getParent().requestDisallowInterceptTouchEvent(true);
+                break;
+            case MotionEvent.ACTION_MOVE:
+                getParent().requestDisallowInterceptTouchEvent(true);
+                move_end_x = averageX;
+                move_end_y = averageY;
+                float dx = move_end_x - move_start_x;
+                float dy = move_end_y - move_start_y;
+
+                if (!isCanDrag) {
+                    isCanDrag = Math.sqrt(dx * dx + dy * dy) > mTouchSlop;
+                }
+                if (isCanDrag) {
+                    scaleMatrix.postTranslate(dx, dy);
+                    checkBoundsIsOutside();
+                    setImageMatrix(scaleMatrix);
+                }
+                move_start_x = move_end_x;
+                move_start_y = move_end_y;
+                break;
+            case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_CANCEL:
+                mLastPointerCount = 0;
+                break;
+        }
         return true;
+    }
+
+    /**
+     * 检测移动后位置是否会让左右出现白边
+     */
+    private void checkBoundsIsOutside() {
+        if (realBounds.left > 0) {
+            //左边移动到了边界内，会出现白边，移回去
+            scaleMatrix.postTranslate(-realBounds.left,0);
+        }
+
+        if (realBounds.right < getWidth()) {
+            //右边移动到了边界内，移回去
+            scaleMatrix.postTranslate(getWidth()-realBounds.right,0);
+        }
+
+        if (realBounds.top > getHeight()/3) {
+            //上边移动到了原始位置下方
+            scaleMatrix.postTranslate(0,-(realBounds.top-getHeight()/3));
+        }
+
+        if (realBounds.bottom < getHeight()/3*2) {
+            scaleMatrix.postTranslate(0,getHeight()/3*2 - realBounds.bottom);
+        }
+
+        scaleMatrix.mapRect(realBounds,originBounds);
     }
 }
