@@ -8,3 +8,5 @@
 
 
 最大缩放值，高度为屏幕2倍，宽度也是屏幕2倍
+
+![image](https://github.com/wu781521512/HappyScaleImageView/blob/master/HappyScaleImageView/ezgif.com-resize.gif)
